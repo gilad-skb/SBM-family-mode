@@ -22,6 +22,20 @@ namespace SBM_CustomLevels
     [HarmonyPatch]
     internal static class SpikeReplacer
     {
+        // Shared black material reused for every snowball replacement to avoid per-spike allocation.
+        private static Material _sharedBlackMaterial;
+
+        private static Material GetBlackMaterial(Material sourceMaterial = null)
+        {
+            if (_sharedBlackMaterial == null)
+            {
+                _sharedBlackMaterial = sourceMaterial != null
+                    ? new Material(sourceMaterial) { color = Color.black }
+                    : new Material(Shader.Find("Standard")) { color = Color.black };
+            }
+            return _sharedBlackMaterial;
+        }
+
         // ── Trigger: original story-mode level starts ──────────────────────────────────
 
         /// <summary>
@@ -126,8 +140,7 @@ namespace SBM_CustomLevels
                 // Paint everything black.
                 foreach (var rend in snowball.GetComponentsInChildren<MeshRenderer>(true))
                 {
-                    var mat = new Material(rend.sharedMaterial) { color = Color.black };
-                    rend.material = mat;
+                    rend.material = GetBlackMaterial(rend.sharedMaterial);
                     rend.enabled = true;
                 }
             }
@@ -141,10 +154,7 @@ namespace SBM_CustomLevels
 
                 var rend = snowball.GetComponent<MeshRenderer>();
                 if (rend != null)
-                {
-                    var mat = new Material(Shader.Find("Standard")) { color = Color.black };
-                    rend.material = mat;
-                }
+                    rend.material = GetBlackMaterial();
             }
 
             // Parent under the spike so the visual follows the spike's transform exactly.
@@ -160,6 +170,16 @@ namespace SBM_CustomLevels
         // ── Blood suppression ──────────────────────────────────────────────────────────
 
         /// <summary>
+        /// Returns <c>true</c> when the given particle system name matches a blood or gore effect.
+        /// Comparison is done with <see cref="StringComparison.OrdinalIgnoreCase"/> to avoid
+        /// per-call string allocation from <c>ToLowerInvariant()</c>.
+        /// </summary>
+        private static bool IsBloodEffect(string particleSystemName) =>
+            particleSystemName.IndexOf("blood", StringComparison.OrdinalIgnoreCase) >= 0
+            || particleSystemName.IndexOf("splat", StringComparison.OrdinalIgnoreCase) >= 0
+            || particleSystemName.IndexOf("gore", StringComparison.OrdinalIgnoreCase) >= 0;
+
+        /// <summary>
         /// Intercepts <see cref="ParticleSystem.Play()"/> in original game levels and skips
         /// any particle system whose name suggests it is a blood or gore effect.  This is a
         /// "family mode" suppression: all blood effects are hidden in original levels so that
@@ -173,11 +193,7 @@ namespace SBM_CustomLevels
             if (LevelManager.InLevel || EditorManager.InEditor)
                 return true;
 
-            string psName = __instance.gameObject.name.ToLowerInvariant();
-            if (psName.Contains("blood") || psName.Contains("splat") || psName.Contains("gore"))
-                return false; // skip this particle effect
-
-            return true;
+            return !IsBloodEffect(__instance.gameObject.name);
         }
 
         /// <summary>
@@ -191,11 +207,7 @@ namespace SBM_CustomLevels
             if (LevelManager.InLevel || EditorManager.InEditor)
                 return true;
 
-            string psName = __instance.gameObject.name.ToLowerInvariant();
-            if (psName.Contains("blood") || psName.Contains("splat") || psName.Contains("gore"))
-                return false;
-
-            return true;
+            return !IsBloodEffect(__instance.gameObject.name);
         }
     }
 }
